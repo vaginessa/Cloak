@@ -1,6 +1,6 @@
 // Fingerprint of Chrome 99
 
-package client
+package browsers
 
 import (
 	"encoding/binary"
@@ -81,20 +81,20 @@ func (c *Chrome) composeExtensions(serverName string, keyShare []byte) []byte {
 	return ret
 }
 
-func (c *Chrome) composeClientHello(hd clientHelloFields) (ch []byte) {
+func (c *Chrome) ComposeClientHello(hd ClientHelloFields) (ch []byte) {
 	var clientHello [12][]byte
 	clientHello[0] = []byte{0x01}             // handshake type
 	clientHello[1] = []byte{0x00, 0x01, 0xfc} // length 508
 	clientHello[2] = []byte{0x03, 0x03}       // client version
-	clientHello[3] = hd.random                // random
+	clientHello[3] = hd.Random                // random
 	clientHello[4] = []byte{0x20}             // session id length 32
-	clientHello[5] = hd.sessionId             // session id
+	clientHello[5] = hd.SessionId             // session id
 	clientHello[6] = []byte{0x00, 0x20}       // cipher suites length 32
 	cipherSuites, _ := hex.DecodeString("130113021303c02bc02fc02cc030cca9cca8c013c014009c009d002f0035")
 	clientHello[7] = append(makeGREASE(), cipherSuites...) // cipher suites
 	clientHello[8] = []byte{0x01}                          // compression methods length 1
 	clientHello[9] = []byte{0x00}                          // compression methods
-	clientHello[11] = c.composeExtensions(hd.serverName, hd.x25519KeyShare)
+	clientHello[11] = c.composeExtensions(hd.ServerName, hd.X25519KeyShare)
 	clientHello[10] = []byte{0x00, 0x00} // extensions length 403
 	binary.BigEndian.PutUint16(clientHello[10], uint16(len(clientHello[11])))
 	var ret []byte

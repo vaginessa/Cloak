@@ -1,6 +1,6 @@
 // Fingerprint of Firefox 99
 
-package client
+package browsers
 
 import (
 	"encoding/binary"
@@ -53,21 +53,21 @@ func (f *Firefox) composeExtensions(serverName string, keyShare []byte) []byte {
 	return ret
 }
 
-func (f *Firefox) composeClientHello(hd clientHelloFields) (ch []byte) {
+func (f *Firefox) ComposeClientHello(hd ClientHelloFields) (ch []byte) {
 	var clientHello [12][]byte
 	clientHello[0] = []byte{0x01}             // handshake type
 	clientHello[1] = []byte{0x00, 0x01, 0xfc} // length 508
 	clientHello[2] = []byte{0x03, 0x03}       // client version
-	clientHello[3] = hd.random                // random
+	clientHello[3] = hd.Random                // random
 	clientHello[4] = []byte{0x20}             // session id length 32
-	clientHello[5] = hd.sessionId             // session id
+	clientHello[5] = hd.SessionId             // session id
 	clientHello[6] = []byte{0x00, 0x22}       // cipher suites length 34
 	cipherSuites, _ := hex.DecodeString("130113031302c02bc02fcca9cca8c02cc030c00ac009c013c014009c009d002f0035")
 	clientHello[7] = cipherSuites // cipher suites
 	clientHello[8] = []byte{0x01} // compression methods length 1
 	clientHello[9] = []byte{0x00} // compression methods
 
-	clientHello[11] = f.composeExtensions(hd.serverName, hd.x25519KeyShare)
+	clientHello[11] = f.composeExtensions(hd.ServerName, hd.X25519KeyShare)
 	clientHello[10] = []byte{0x00, 0x00} // extensions length
 	binary.BigEndian.PutUint16(clientHello[10], uint16(len(clientHello[11])))
 

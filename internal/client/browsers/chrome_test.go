@@ -1,4 +1,4 @@
-package client
+package browsers
 
 import (
 	"encoding/hex"
