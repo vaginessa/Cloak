@@ -1,4 +1,4 @@
-package client
+package transports
 
 import (
 	"encoding/base64"
@@ -14,7 +14,8 @@ import (
 
 type WSOverTLS struct {
 	*common.WebSocketConn
-	cdnDomainPort string
+	CDNHost string
+	CDNPort string
 }
 
 func (ws *WSOverTLS) Handshake(rawConn net.Conn, authInfo AuthInfo) (sessionKey [32]byte, err error) {
@@ -40,7 +41,7 @@ func (ws *WSOverTLS) Handshake(rawConn net.Conn, authInfo AuthInfo) (sessionKey 
 		return
 	}
 
-	u, err := url.Parse("ws://" + ws.cdnDomainPort)
+	u, err := url.Parse("ws://" + net.JoinHostPort(ws.CDNHost, ws.CDNPort))
 	if err != nil {
 		return sessionKey, fmt.Errorf("failed to parse ws url: %v", err)
 	}

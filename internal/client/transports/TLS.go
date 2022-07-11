@@ -1,4 +1,4 @@
-package client
+package transports
 
 import (
 	"github.com/cbeuw/Cloak/internal/client/browsers"
@@ -7,11 +7,9 @@ import (
 	"net"
 )
 
-const appDataMaxLength = 16401
-
 type DirectTLS struct {
 	*common.TLSConn
-	browser browsers.Browser
+	Browser browsers.Browser
 }
 
 // Handshake handles the TLS handshake for a given conn and returns the sessionKey
@@ -27,7 +25,7 @@ func (tls *DirectTLS) Handshake(rawConn net.Conn, authInfo AuthInfo) (sessionKey
 		X25519KeyShare: payload.ciphertextWithTag[32:64],
 		ServerName:     authInfo.MockDomain,
 	}
-	chOnly := tls.browser.ComposeClientHello(fields)
+	chOnly := tls.Browser.ComposeClientHello(fields)
 	chWithRecordLayer := common.AddRecordLayer(chOnly, common.Handshake, common.VersionTLS11)
 	_, err = rawConn.Write(chWithRecordLayer)
 	if err != nil {
