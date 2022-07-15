@@ -1,8 +1,8 @@
 package transports
 
 import (
-	"github.com/cbeuw/Cloak/internal/client/browsers"
 	"github.com/cbeuw/Cloak/internal/common"
+	"github.com/cbeuw/Cloak/libcloak/client/browsers"
 	log "github.com/sirupsen/logrus"
 	"net"
 )

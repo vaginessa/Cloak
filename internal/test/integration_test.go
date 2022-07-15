@@ -5,10 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
-	"github.com/cbeuw/Cloak/internal/client"
+	"github.com/cbeuw/Cloak/internal/cli_client"
 	"github.com/cbeuw/Cloak/internal/common"
 	mux "github.com/cbeuw/Cloak/internal/multiplex"
 	"github.com/cbeuw/Cloak/internal/server"
+	"github.com/cbeuw/Cloak/libcloak/client"
 	"github.com/cbeuw/connutil"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -75,6 +76,8 @@ func serveUDPEcho(listener *connutil.PipeListener) {
 var bypassUID = [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 var publicKey, _ = base64.StdEncoding.DecodeString("7f7TuKrs264VNSgMno8PkDlyhGhVuOSR8JHLE6H4Ljc=")
 var privateKey, _ = base64.StdEncoding.DecodeString("SMWeC6VuZF8S/id65VuFQFlfa7hTEJBpL6wWhqPP100=")
+var four = 4
+var zero = 0
 
 var basicUDPConfig = client.RawConfig{
 	ServerName:       "www.example.com",
@@ -82,13 +85,11 @@ var basicUDPConfig = client.RawConfig{
 	EncryptionMethod: "plain",
 	UID:              bypassUID[:],
 	PublicKey:        publicKey,
-	NumConn:          4,
+	NumConn:          &four,
 	UDP:              true,
 	Transport:        "direct",
 	RemoteHost:       "fake.com",
 	RemotePort:       "9999",
-	LocalHost:        "127.0.0.1",
-	LocalPort:        "9999",
 }
 
 var basicTCPConfig = client.RawConfig{
@@ -97,13 +98,11 @@ var basicTCPConfig = client.RawConfig{
 	EncryptionMethod: "plain",
 	UID:              bypassUID[:],
 	PublicKey:        publicKey,
-	NumConn:          4,
+	NumConn:          &four,
 	UDP:              false,
 	Transport:        "direct",
 	RemoteHost:       "fake.com",
 	RemotePort:       "9999",
-	LocalHost:        "127.0.0.1",
-	LocalPort:        "9999",
 	BrowserSig:       "firefox",
 }
 
@@ -113,22 +112,20 @@ var singleplexTCPConfig = client.RawConfig{
 	EncryptionMethod: "plain",
 	UID:              bypassUID[:],
 	PublicKey:        publicKey,
-	NumConn:          0,
+	NumConn:          &zero,
 	UDP:              false,
 	Transport:        "direct",
 	RemoteHost:       "fake.com",
 	RemotePort:       "9999",
-	LocalHost:        "127.0.0.1",
-	LocalPort:        "9999",
 	BrowserSig:       "chrome",
 }
 
-func generateClientConfigs(rawConfig client.RawConfig, state common.WorldState) (client.LocalConnConfig, client.RemoteConnConfig, client.AuthInfo) {
-	lcl, rmt, auth, err := rawConfig.ProcessRawConfig(state)
+func generateClientConfigs(rawConfig client.RawConfig, state common.WorldState) (client.RemoteConnConfig, client.AuthInfo) {
+	rmt, auth, err := rawConfig.ProcessRawConfig(state)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return lcl, rmt, auth
+	return rmt, auth
 }
 
 func basicServerState(ws common.WorldState) *server.State {
@@ -160,7 +157,7 @@ func (m *mockUDPDialer) Dial(network, address string) (net.Conn, error) {
 	return net.DialUDP("udp", nil, m.raddr)
 }
 
-func establishSession(lcc client.LocalConnConfig, rcc client.RemoteConnConfig, ai client.AuthInfo, serverState *server.State) (common.Dialer, *connutil.PipeListener, common.Dialer, net.Listener, error) {
+func establishSession(rcc client.RemoteConnConfig, ai client.AuthInfo, serverState *server.State) (common.Dialer, *connutil.PipeListener, common.Dialer, net.Listener, error) {
 	//													 redirecting web server
 	//																^
 	//																|
@@ -201,12 +198,12 @@ func establishSession(lcc client.LocalConnConfig, rcc client.RemoteConnConfig, a
 			addrCh <- conn.LocalAddr().(*net.UDPAddr)
 			return conn, err
 		}
-		go client.RouteUDP(acceptor, lcc.Timeout, rcc.Singleplex, clientSeshMaker)
+		go cli_client.RouteUDP(acceptor, 300*time.Second, rcc.Singleplex, clientSeshMaker)
 		proxyToCkClientD = mDialer
 	} else {
 		var proxyToCkClientL *connutil.PipeListener
 		proxyToCkClientD, proxyToCkClientL = connutil.DialerListener(10 * 1024)
-		go client.RouteTCP(proxyToCkClientL, lcc.Timeout, rcc.Singleplex, clientSeshMaker)
+		go cli_client.RouteTCP(proxyToCkClientL, 300*time.Second, rcc.Singleplex, clientSeshMaker)
 	}
 
 	// set up server
@@ -258,11 +255,11 @@ func TestUDP(t *testing.T) {
 	log.SetLevel(log.ErrorLevel)
 
 	worldState := common.WorldOfTime(time.Unix(10, 0))
-	lcc, rcc, ai := generateClientConfigs(basicUDPConfig, worldState)
+	rcc, ai := generateClientConfigs(basicUDPConfig, worldState)
 	sta := basicServerState(worldState)
 
 	t.Run("simple send", func(t *testing.T) {
-		proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(lcc, rcc, ai, sta)
+		proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(rcc, ai, sta)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -299,7 +296,7 @@ func TestUDP(t *testing.T) {
 
 	const echoMsgLen = 1024
 	t.Run("user echo", func(t *testing.T) {
-		proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(lcc, rcc, ai, sta)
+		proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(rcc, ai, sta)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -319,9 +316,9 @@ func TestUDP(t *testing.T) {
 func TestTCPSingleplex(t *testing.T) {
 	log.SetLevel(log.ErrorLevel)
 	worldState := common.WorldOfTime(time.Unix(10, 0))
-	lcc, rcc, ai := generateClientConfigs(singleplexTCPConfig, worldState)
+	rcc, ai := generateClientConfigs(singleplexTCPConfig, worldState)
 	sta := basicServerState(worldState)
-	proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(lcc, rcc, ai, sta)
+	proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(rcc, ai, sta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +377,7 @@ func TestTCPMultiplex(t *testing.T) {
 	log.SetLevel(log.ErrorLevel)
 	worldState := common.WorldOfTime(time.Unix(10, 0))
 
-	lcc, rcc, ai := generateClientConfigs(basicTCPConfig, worldState)
+	rcc, ai := generateClientConfigs(basicTCPConfig, worldState)
 	sta := basicServerState(worldState)
 
 	t.Run("user echo single", func(t *testing.T) {
@@ -389,7 +386,7 @@ func TestTCPMultiplex(t *testing.T) {
 			writeData := make([]byte, dataLen)
 			rand.Read(writeData)
 			t.Run(fmt.Sprintf("data length %v", dataLen), func(t *testing.T) {
-				proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(lcc, rcc, ai, sta)
+				proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(rcc, ai, sta)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -422,7 +419,7 @@ func TestTCPMultiplex(t *testing.T) {
 
 	const echoMsgLen = 16384
 	t.Run("user echo", func(t *testing.T) {
-		proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(lcc, rcc, ai, sta)
+		proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(rcc, ai, sta)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -440,7 +437,7 @@ func TestTCPMultiplex(t *testing.T) {
 	})
 
 	t.Run("redir echo", func(t *testing.T) {
-		_, _, netToCkServerD, redirFromCkServerL, err := establishSession(lcc, rcc, ai, sta)
+		_, _, netToCkServerD, redirFromCkServerL, err := establishSession(rcc, ai, sta)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -465,9 +462,9 @@ func TestClosingStreamsFromProxy(t *testing.T) {
 		clientConfig := clientConfig
 		clientConfigName := clientConfigName
 		t.Run(clientConfigName, func(t *testing.T) {
-			lcc, rcc, ai := generateClientConfigs(clientConfig, worldState)
+			rcc, ai := generateClientConfigs(clientConfig, worldState)
 			sta := basicServerState(worldState)
-			proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(lcc, rcc, ai, sta)
+			proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(rcc, ai, sta)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -527,7 +524,7 @@ func TestClosingStreamsFromProxy(t *testing.T) {
 func BenchmarkIntegration(b *testing.B) {
 	log.SetLevel(log.ErrorLevel)
 	worldState := common.WorldOfTime(time.Unix(10, 0))
-	lcc, rcc, ai := generateClientConfigs(basicTCPConfig, worldState)
+	rcc, ai := generateClientConfigs(basicTCPConfig, worldState)
 	sta := basicServerState(worldState)
 	const bufSize = 16 * 1024
 
@@ -541,7 +538,7 @@ func BenchmarkIntegration(b *testing.B) {
 	for name, method := range encryptionMethods {
 		b.Run(name, func(b *testing.B) {
 			ai.EncryptionMethod = method
-			proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(lcc, rcc, ai, sta)
+			proxyToCkClientD, proxyFromCkServerL, _, _, err := establishSession(rcc, ai, sta)
 			if err != nil {
 				b.Fatal(err)
 			}
